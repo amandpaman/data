@@ -2,120 +2,135 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-# App Config
-st.set_page_config(page_title="Network Monitor", layout="wide")
+st.set_page_config(page_title="📊 Excel Data Dashboard", layout="wide")
 
-# Custom CSS for Navbar and Colored Boxes
+# Style
 st.markdown("""
     <style>
-    .main {
-        background: linear-gradient(120deg, #eef2f3, #8e9eab);
-    }
-    .sidebar .sidebar-content {
-        background-color: #2c3e50;
-        color: white;
-    }
-    .sidebar .sidebar-content a {
-        color: #ffffff;
-    }
-    .metric-box {
-        padding: 1.5rem;
-        border-radius: 12px;
-        color: white;
-        text-align: center;
-    }
-    .green { background-color: #27ae60; }
-    .blue { background-color: #2980b9; }
-    .red { background-color: #c0392b; }
+        .main {
+            background: linear-gradient(to right, #d9e4f5, #f4f9fc);
+        }
+        .block-container {
+            padding: 2rem;
+            border-radius: 12px;
+        }
+        .stButton>button {
+            background-color: #4CAF50 !important;
+            color: white !important;
+            font-weight: bold;
+        }
+        .stSelectbox, .stMultiselect, .stTextInput {
+            background-color: #ffffff !important;
+            border-radius: 10px !important;
+            padding: 10px;
+        }
     </style>
 """, unsafe_allow_html=True)
 
-# Sidebar as Navbar
-with st.sidebar:
-    st.title("🛰️ Network Dashboard")
-    st.markdown("Navigate below:")
-    nav_option = st.radio("Go to:", ["📊 Dashboard", "📁 View Data", "📈 Visualizations"])
-    uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"])
-    st.markdown("---")
-    st.caption("Made with ❤️ for Network Monitoring")
+st.title("📊 Excel Visual Dashboard")
+st.markdown("Use this dashboard to visualize and filter data from Excel files.")
+st.markdown("---")
 
-if uploaded_file:
-    df = pd.read_excel(uploaded_file)
+# Navigation
+menu = st.sidebar.radio("🔍 Navigation", ["📁 Upload File", "🧾 View Data", "📈 Visualize Data", "📤 Export Data"])
 
-    if nav_option == "📁 View Data":
-        st.title("📁 Full Data")
+# Store globally
+if "df" not in st.session_state:
+    st.session_state.df = None
+
+# Upload File
+if menu == "📁 Upload File":
+    st.subheader("📥 Upload Excel File")
+    file = st.file_uploader("Upload your Excel file (.xlsx)", type=["xlsx"])
+    if file:
+        try:
+            df = pd.read_excel(file)
+            st.session_state.df = df
+            st.success("✅ File uploaded successfully!")
+            st.write(df.head())
+        except Exception as e:
+            st.error(f"❌ Error loading file: {e}")
+
+# View Data
+elif menu == "🧾 View Data":
+    df = st.session_state.df
+    if df is not None:
+        st.subheader("📄 Raw Data Preview")
         st.dataframe(df, use_container_width=True)
+        st.markdown(f"**Shape:** `{df.shape[0]} rows × {df.shape[1]} columns`")
+    else:
+        st.warning("⚠️ Please upload a file first.")
 
-    elif nav_option == "📈 Visualizations":
-        st.title("📈 Visualizations")
+# Visualization
+elif menu == "📈 Visualize Data":
+    df = st.session_state.df
+    if df is not None:
+        st.subheader("📊 Data Visualization")
 
-        st.subheader("🧠 CPU Usage by Device Type")
-        fig1 = px.box(df, x="Device Type", y="CPU Usage (%)", color="Device Type")
-        st.plotly_chart(fig1, use_container_width=True)
+        filter_cols = df.columns.tolist()
+        numeric_cols = df.select_dtypes(include='number').columns.tolist()
+        all_cols = df.columns.tolist()
 
-        st.subheader("💾 Memory Usage Distribution")
-        fig2 = px.histogram(df, x="Memory Usage (%)", nbins=40, color="Device Type")
-        st.plotly_chart(fig2, use_container_width=True)
+        with st.expander("🧰 Filters", expanded=True):
+            if "Location" in df.columns:
+                locs = st.multiselect("📍 Filter by Location", df["Location"].unique())
+                if locs:
+                    df = df[df["Location"].isin(locs)]
 
-        st.subheader("📶 Total Network Traffic by Location")
-        fig3 = px.bar(df.groupby("Location")["Network Traffic (MB)"].sum().reset_index(),
-                      x="Location", y="Network Traffic (MB)", color="Location")
-        st.plotly_chart(fig3, use_container_width=True)
+            if "Device" in df.columns:
+                devices = st.multiselect("💻 Filter by Device", df["Device"].unique())
+                if devices:
+                    df = df[df["Device"].isin(devices)]
 
-    else:  # Dashboard
-        st.title("📊 Dashboard Overview")
+            if "Status" in df.columns:
+                statuses = st.multiselect("📶 Filter by Status", df["Status"].unique())
+                if statuses:
+                    df = df[df["Status"].isin(statuses)]
 
-        # Filters
-        with st.expander("🔧 Apply Filters"):
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                location = st.multiselect("Filter by Location", df["Location"].unique())
-            with col2:
-                device_type = st.multiselect("Filter by Device Type", df["Device Type"].unique())
-            with col3:
-                status = st.multiselect("Filter by Status", df["Status"].unique())
+            if "Date" in df.columns:
+                df["Date"] = pd.to_datetime(df["Date"], errors='coerce')
+                date_range = st.date_input("🗓 Filter by Date Range",
+                                           value=(df["Date"].min(), df["Date"].max()))
+                if len(date_range) == 2:
+                    df = df[(df["Date"] >= pd.to_datetime(date_range[0])) & (df["Date"] <= pd.to_datetime(date_range[1]))]
 
-        filtered_df = df.copy()
-        if location:
-            filtered_df = filtered_df[filtered_df["Location"].isin(location)]
-        if device_type:
-            filtered_df = filtered_df[filtered_df["Device Type"].isin(device_type)]
-        if status:
-            filtered_df = filtered_df[filtered_df["Status"].isin(status)]
-
-        # Metrics in colored boxes
         col1, col2, col3 = st.columns(3)
-        col1.markdown(f"""
-            <div class='metric-box green'>
-                <h3>Total Devices</h3>
-                <h2>{len(filtered_df)}</h2>
-            </div>""", unsafe_allow_html=True)
 
-        col2.markdown(f"""
-            <div class='metric-box blue'>
-                <h3>Online Devices</h3>
-                <h2>{(filtered_df["Status"] == "Online").sum()}</h2>
-            </div>""", unsafe_allow_html=True)
+        with col1:
+            x_axis = st.selectbox("🧭 X-axis", options=all_cols)
+        with col2:
+            y_axis = st.selectbox("📊 Y-axis (numeric)", options=numeric_cols)
+        with col3:
+            chart_type = st.selectbox("📈 Chart Type", ["Bar", "Line", "Scatter", "Pie"])
 
-        col3.markdown(f"""
-            <div class='metric-box red'>
-                <h3>Avg. CPU Usage</h3>
-                <h2>{filtered_df["CPU Usage (%)"].mean():.2f}%</h2>
-            </div>""", unsafe_allow_html=True)
+        if st.button("🔍 Generate Chart"):
+            try:
+                fig = None
+                if chart_type == "Bar":
+                    fig = px.bar(df, x=x_axis, y=y_axis, color=x_axis)
+                elif chart_type == "Line":
+                    fig = px.line(df, x=x_axis, y=y_axis)
+                elif chart_type == "Scatter":
+                    fig = px.scatter(df, x=x_axis, y=y_axis, color=x_axis, size=y_axis)
+                elif chart_type == "Pie":
+                    fig = px.pie(df, names=x_axis, values=y_axis)
 
-        st.divider()
+                st.plotly_chart(fig, use_container_width=True)
+            except Exception as e:
+                st.error(f"❌ Failed to generate chart: {e}")
+    else:
+        st.warning("⚠️ Please upload a file first.")
 
-        # Quick Charts
-        st.subheader("📌 Quick Stats")
-        col4, col5 = st.columns(2)
-
-        with col4:
-            cpu_chart = px.box(filtered_df, x="Device Type", y="CPU Usage (%)", color="Device Type")
-            st.plotly_chart(cpu_chart, use_container_width=True)
-
-        with col5:
-            mem_chart = px.histogram(filtered_df, x="Memory Usage (%)", nbins=30, color="Device Type")
-            st.plotly_chart(mem_chart, use_container_width=True)
-
-else:
-    st.warning("📂 Please upload an Excel file from the sidebar to begin.")
+# Export filtered data
+elif menu == "📤 Export Data":
+    df = st.session_state.df
+    if df is not None:
+        st.subheader("📤 Export Filtered Data")
+        st.download_button(
+            label="📥 Download CSV",
+            data=df.to_csv(index=False).encode("utf-8"),
+            file_name="filtered_data.csv",
+            mime="text/csv"
+        )
+    else:
+        st.warning("⚠️ Please upload a file first.")
